@@ -1,0 +1,15 @@
+# Демо-публикация на Render, как у Ацеграма. Только для показа: серверы за рубежом, база стирается при перезапуске.
+# Настоящие заявки, партнёров и платежи сюда не вводить (152-ФЗ, ст. 18 ч. 5).
+services:
+  - type: web
+    name: artyushkin-site-demo
+    runtime: node
+    plan: free
+    buildCommand: echo ok
+    startCommand: node server.js
+    healthCheckPath: /healthz
+    envVars:
+      - key: SECRET
+        generateValue: true
+      - key: ADMIN_PASSWORD
+        generateValue: true
