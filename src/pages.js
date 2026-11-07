@@ -183,7 +183,7 @@ function home(d) {
   <div class="wrap hero-in">
     <div>
       <p class="eyebrow">${esc(d.site.role)}</p>
-      <h1>Магазин с партнёрской программой под вашу нишу</h1>
+      <h1>Готовые сайты и магазины с партнёрской программой под вашу нишу</h1>
       <p class="lead">${esc(d.site.tagline)} Подключение оплаты и другие настройки считаются отдельно и известны до старта.</p>
       <div class="actions"><a class="btn" href="/solutions/">Смотреть решения</a><a class="btn btn-ghost" href="/contact/">Обсудить задачу</a></div>
       <ul class="facts"><li><b>Фикс</b>цена решения заранее</li><li><b>1–3</b>линии партнёров</li><li><b>${ready}</b>${ready === 1 ? 'решение готово' : 'решения готовы'}</li></ul>
@@ -289,7 +289,7 @@ function solutionPage(d, i) {
     <p class="lead">${esc(i.summary)}</p>
     ${i.example ? `<p class="muted">${esc(i.example)}</p>` : ''}
     <div class="sol-preview acc-${V.accent(i.accent)}">${preview(i, { big: true })}</div>
-    ${link ? `<p class="small muted">Демо открывается по ссылке: можно положить товары в корзину, пройти тестовую оплату и увидеть, сколько получит партнёр. Данные вымышленные.</p>` : ''}
+    ${link ? `<p class="small muted">${i.demoUrl ? 'Демо работает на отдельном адресе. Данные в нём вымышленные. Доступ в админку демо дам по запросу.' : 'Демо открывается по ссылке: можно положить товары в корзину, пройти тестовую оплату и увидеть, сколько получит партнёр. Данные вымышленные.'}</p>` : ''}
   </div>
   <aside class="buy">
     ${statusBadge(i)}
@@ -303,7 +303,7 @@ function solutionPage(d, i) {
 
 <section class="sec tight"><div class="wrap">
   <h2>Что входит</h2>
-  <div class="grid3">${Object.entries(b.features).map(([h, list]) => `<div class="box feat">${ibadge((b.featureIcons || {})[h] || 'check', V.accent(i.accent), 24)}<h3>${esc(h)}</h3><ul class="checks">${list.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>`).join('')}</div>
+  <div class="grid3">${Object.entries(i.features || b.features).map(([h, list]) => `<div class="box feat">${ibadge(((i.featureIcons || b.featureIcons) || {})[h] || 'check', V.accent(i.accent), 24)}<h3>${esc(h)}</h3><ul class="checks">${list.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>`).join('')}</div>
 </div></section>
 
 <section class="sec alt"><div class="wrap">

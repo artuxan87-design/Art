@@ -87,7 +87,7 @@ test('служебный адрес /healthz и демо-страницы реш
 test('все иконки и обложки из контента существуют', () => {
   const V = require('../lib/visuals');
   const f = require('../src/pages').files();
-  for (const i of f.solutions.items) { assert.ok(V.ICONS[i.icon], i.slug); assert.ok(V.COVERS[i.cover], i.slug); assert.ok(V.ACCENTS[i.accent], i.slug); for (const p of i.demo.products) assert.ok(V.ICONS[p.icon], p.name); }
+  for (const i of f.solutions.items) { assert.ok(V.ICONS[i.icon], i.slug); assert.ok(V.COVERS[i.cover], i.slug); assert.ok(V.ACCENTS[i.accent], i.slug); for (const p of ((i.demo && i.demo.products) || [])) assert.ok(V.ICONS[p.icon], p.name); }
   for (const s of f.services.items) assert.ok(V.ICONS[s.icon], s.id);
   for (const s of f.site.steps) assert.ok(V.ICONS[s.icon]);
   for (const s of f.solutions.base.partnerFlow) assert.ok(V.ICONS[s.icon]);
@@ -160,5 +160,36 @@ test('админка: статьи, черновики, загрузка фот�
     assert.equal((await upload(Buffer.from('<script>alert(1)</script>'.repeat(5)), login)).status, 400);
     assert.equal((await upload(png, '')).status, 403);
     assert.equal((await visitor('GET', '/uploads/../server.js')).status, 404);
+  } finally { server.close(); fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('витрина: сайты для кинолога и агента, демо-ссылки, статьи о сегодняшней работе; новые позиции доходят до уже созданной базы', async () => {
+  const os = require('os'), fs = require('fs'), path = require('path');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vit-'));
+  const file = path.join(dir, 'db.json');
+  // старая база: только прежние решения, без блога
+  const first = createApp({ dataFile: file, config: { port: 0, adminPassword: 'x', secret: 's' } });
+  first.store.c.solutions = first.store.c.solutions.filter(x => x.slug.startsWith('shop-'));
+  delete first.store.c.seededSolutions; delete first.store.c.seededPosts;
+  first.store.c.posts = [first.store.c.posts[first.store.c.posts.length - 1]];
+  first.store.save();
+  const { server, store } = createApp({ dataFile: file, config: { port: 0, adminPassword: 'x', secret: 's' } });
+  await new Promise(r => server.listen(0, r));
+  const c = client(server.address().port);
+  try {
+    assert.ok(store.c.solutions.some(x => x.slug === 'site-kinolog'));
+    assert.ok(store.c.posts.some(x => x.slug === 'import-obyavlenij-s-avito-na-sajt-agenta'));
+    const sol = (await c('GET', '/solutions/')).text;
+    assert.match(sol, /Сайт кинолога и тренера/); assert.match(sol, /Сайт агента по недвижимости/);
+    const k = (await c('GET', '/solutions/site-kinolog/')).text;
+    assert.match(k, /https:\/\/kinolog-site-demo\.onrender\.com/);
+    assert.match(k, /Блог и поиск/);
+    assert.doesNotMatch(k, /корзину/);
+    assert.match((await c('GET', '/solutions/site-realtor/')).text, /realtor-site-demo\.onrender\.com/);
+    assert.match((await c('GET', '/blog/chto-sdelano-shablony-saitov-dlya-kinologa-i-agenta-nedvizhimosti/')).text, /Сайт агента/);
+    // удалённая владельцем статья не возвращается после перезапуска
+    store.deletePost('import-obyavlenij-s-avito-na-sajt-agenta');
+    const again = createApp({ dataFile: file, config: { port: 0, adminPassword: 'x', secret: 's' } });
+    assert.equal(again.store.post('import-obyavlenij-s-avito-na-sajt-agenta'), undefined);
   } finally { server.close(); fs.rmSync(dir, { recursive: true, force: true }); }
 });
