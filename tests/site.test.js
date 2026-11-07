@@ -70,7 +70,7 @@ test('служебный адрес /healthz и демо-страницы реш
   const c = client(server.address().port);
   try {
     assert.equal((await c('GET', '/healthz')).text, 'ok');
-    for (const u of ['/demo/shop-cosmetics/', '/demo/shop-cosmetics/cabinet/', '/demo/shop-cosmetics/admin/', '/solutions/', '/solutions/shop-pets/', '/partners/', '/services/', '/']) {
+    for (const u of ['/demo/shop-cosmetics/', '/demo/shop-cosmetics/cabinet/', '/demo/shop-cosmetics/admin/', '/solutions/', '/solutions/site-kinolog/', '/partners/', '/services/', '/']) {
       const r = await c('GET', u);
       assert.equal(r.status, 200, u);
       assert.ok(/<svg/.test(r.text), 'графика на ' + u);
@@ -114,7 +114,7 @@ test('блог и SEO: страницы статей, карта сайта, з�
     assert.match(home, /"@type":"LocalBusiness"/);
     assert.match(home, /ym\(777/);
     const sm = (await c('GET', '/sitemap.xml')).text;
-    assert.match(sm, /https:\/\/ivan\.ru\/blog\/magazin-chaya-i-kofe-s-podpiskoj\//);
+    assert.match(sm, /https:\/\/ivan\.ru\/blog\/kak-rabotaet-partnerskaya-programma-na-tri-linii\//);
     assert.doesNotMatch(sm, /admin|partner\/|pay\//);
     assert.match((await c('GET', '/blog/magazin-kosmetiki-s-partnerskoj-programmoj/')).text, /"@type":"Article"/);
     assert.match((await c('GET', '/partner/login')).text, /noindex/);
@@ -139,11 +139,11 @@ test('админка: статьи, черновики, загрузка фот�
   const admin = client(port), visitor = client(port);
   try {
     await admin('POST', '/admin/login', { password: 'adm' });
-    let r = await admin('POST', '/admin/posts/new', { title: 'Новая статья', body: '## Раздел\n\nТекст.', published: '1', product: 'shop-tea' });
+    let r = await admin('POST', '/admin/posts/new', { title: 'Новая статья', body: '## Раздел\n\nТекст.', published: '1', product: 'shop-cosmetics' });
     assert.equal(r.status, 303);
     const slug = store.c.posts.at(-1).slug;
     assert.equal(slug, 'novaya-statya');
-    assert.equal(store.post(slug).product, 'shop-tea');
+    assert.equal(store.post(slug).product, 'shop-cosmetics');
     assert.match((await visitor('GET', `/blog/${slug}/`)).text, /Текст\./);
     await admin('POST', `/admin/posts/${slug}`, { title: 'Новая статья', body: 'x', date: '2026-01-01' });
     assert.equal((await visitor('GET', `/blog/${slug}/`)).status, 404);
@@ -192,4 +192,22 @@ test('витрина: сайты для кинолога и агента, дем
     const again = createApp({ dataFile: file, config: { port: 0, adminPassword: 'x', secret: 's' } });
     assert.equal(again.store.post('import-obyavlenij-s-avito-na-sajt-agenta'), undefined);
   } finally { server.close(); fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('убранные с витрины позиции удаляются и из старой базы, статьи о них тоже', async () => {
+  const os = require('os'), fs = require('fs'), path = require('path');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rm-'));
+  const file = path.join(dir, 'db.json');
+  const first = createApp({ dataFile: file, config: { port: 0, adminPassword: 'x', secret: 's' } });
+  first.store.c.solutions.push({ slug: 'shop-tea', title: 'Чай', category: 'shop', status: 'soon' });
+  first.store.c.posts.push({ slug: 'magazin-chaya-i-kofe-s-podpiskoj', title: 'Чай', date: '2026-01-01', body: 'x', published: true });
+  first.store.save();
+  const { store } = createApp({ dataFile: file, config: { port: 0, adminPassword: 'x', secret: 's' } });
+  try {
+    assert.equal(store.c.solutions.some(x => /shop-(tea|pets|handmade)/.test(x.slug)), false);
+    assert.equal(store.c.posts.some(x => /chaya|zhivotn|handmade/.test(x.slug)), false);
+    assert.ok(store.c.solutions.some(x => x.slug === 'shop-cosmetics'));
+    assert.ok(store.c.solutions.some(x => x.slug === 'site-kinolog') && store.c.solutions.some(x => x.slug === 'site-realtor'));
+    assert.equal(store.c.posts.length, 5);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

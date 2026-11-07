@@ -139,111 +139,6 @@
       }
     },
     {
-      "slug": "shop-pets",
-      "category": "shop",
-      "status": "soon",
-      "title": "Магазин товаров для животных",
-      "niche": "Товары для животных",
-      "summary": "Корма, лакомства, аксессуары. Партнёры: заводчики, грумеры, блогеры.",
-      "price": null,
-      "term": null,
-      "demoUrl": null,
-      "icon": "heart",
-      "cover": "shop",
-      "accent": "orange",
-      "demo": {
-        "brand": "Лапа",
-        "tagline": "Всё для питомцев",
-        "products": [
-          {
-            "name": "Корм сухой, 2 кг",
-            "price": 1500,
-            "icon": "box"
-          },
-          {
-            "name": "Лакомства",
-            "price": 350,
-            "icon": "heart"
-          },
-          {
-            "name": "Лежанка",
-            "price": 2700,
-            "icon": "gift"
-          }
-        ]
-      }
-    },
-    {
-      "slug": "shop-tea",
-      "category": "shop",
-      "status": "soon",
-      "title": "Магазин чая и кофе",
-      "niche": "Чай и кофе",
-      "summary": "Наборы и подписка на повторные покупки. Партнёры приводят постоянных покупателей.",
-      "price": null,
-      "term": null,
-      "demoUrl": null,
-      "icon": "coffee",
-      "cover": "shop",
-      "accent": "green",
-      "demo": {
-        "brand": "Чайная полка",
-        "tagline": "Чай и кофе",
-        "products": [
-          {
-            "name": "Улун, 250 г",
-            "price": 890,
-            "icon": "coffee"
-          },
-          {
-            "name": "Набор «Утро»",
-            "price": 1500,
-            "icon": "gift"
-          },
-          {
-            "name": "Френч-пресс",
-            "price": 1200,
-            "icon": "box"
-          }
-        ]
-      }
-    },
-    {
-      "slug": "shop-handmade",
-      "category": "shop",
-      "status": "soon",
-      "title": "Магазин хендмейда и подарков",
-      "niche": "Хендмейд и подарки",
-      "summary": "Для мастерских и небольших производств. Партнёры продают через соцсети по своей ссылке.",
-      "price": null,
-      "term": null,
-      "demoUrl": null,
-      "icon": "gift",
-      "cover": "shop",
-      "accent": "teal",
-      "demo": {
-        "brand": "Мастерская",
-        "tagline": "Хендмейд и подарки",
-        "products": [
-          {
-            "name": "Свеча ручной работы",
-            "price": 700,
-            "icon": "sparkle"
-          },
-          {
-            "name": "Мыло",
-            "price": 450,
-            "icon": "heart"
-          },
-          {
-            "name": "Подарочный набор",
-            "price": 2100,
-            "icon": "gift"
-          }
-        ]
-      }
-    },
-    {
       "slug": "site-kinolog",
       "category": "site",
       "status": "ready",
@@ -321,5 +216,10 @@
         "Партнёрская программа и оплата": "tree"
       }
     }
+  ],
+  "removed": [
+    "shop-pets",
+    "shop-tea",
+    "shop-handmade"
   ]
 }
