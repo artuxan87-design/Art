@@ -12,7 +12,15 @@ const imgField = (label, name, v, hint) => `<div class="imgfield"><label>${label
 function adminSite(d, ctx, msg, e = []) {
   const seo = d.site.seo || {};
   const html = A.adminSite(d, ctx, msg, e);
-  const block = `<h3>Поиск (SEO)</h3>
+  const si = d.site, ct = si.contacts || {};
+  const dom = (Array.isArray(si.domains) && si.domains.length ? si.domains : P.DOMAINS).map(x => [x.title, x.text, (x.tags || []).join(', ')].join(' | ')).join('\n');
+  const block = `<h3>Главная: статус и направления</h3>
+<label class="check"><input type="checkbox" name="statusOn" value="1"${si.statusOn !== false ? ' checked' : ''}> <span>Показывать зелёный статус над заголовком</span></label>
+${inp('Текст статуса', 'status', si.status || 'Принимаю новые проекты', { hint: 'Пишите только то, что правда сейчас. Например: «Беру новые проекты с декабря».' })}
+${inp('Направления (каждое с новой строки: название | описание | теги через запятую)', 'domains', dom, { textarea: 1, rows: 6 })}
+<h3>Быстрые ссылки на главной</h3>
+${inp('GitHub', 'github', ct.github, { ph: 'https://github.com/...', hint: 'Только ссылка с https://. Пусто: ссылка не показывается.' })}${inp('Календарь для созвона', 'calendar', ct.calendar, { ph: 'https://...', hint: 'Ссылка на запись, например Calendly или Яндекс Календарь.' })}
+<h3>Поиск (SEO)</h3>
 <p class="muted small">Заголовок и описание каждой страницы формируются автоматически. Здесь общие значения для главной и подключение статистики.</p>
 ${inp('Заголовок главной в поиске (до 70 знаков)', 'seoTitle', seo.title)}${inp('Описание главной в поиске (до 160 знаков)', 'seoDescription', seo.description, { textarea: 1, rows: 2 })}
 ${imgField('Картинка для ссылок в соцсетях и мессенджерах', 'ogImage', seo.ogImage, 'Рекомендуемый размер 1200×630.')}

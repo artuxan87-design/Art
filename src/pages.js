@@ -58,7 +58,8 @@ function layout(d, { title, rawTitle, desc, depth, active, body, noindex, image,
 ${S.head({ site: d.site, base: d.base || '', path: d.path || '/', title: rawTitle || (title ? title + ' — ' + d.site.name : ((d.site.seo && d.site.seo.title) || d.site.name + ': ' + d.site.role)), desc: desc || (d.site.seo && d.site.seo.description), image, type, noindex: noindex || !d.open || /^\/(admin|partner|pay|demo)(\/|$)/.test(d.path || '/'), jsonld: jsonld || [], published, modified })}
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script>try{var t=localStorage.getItem('theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="${r}assets/style.css">
 <link rel="icon" href="${r}assets/favicon.svg" type="image/svg+xml">
 ${S.metrika(d.site.seo && d.site.seo.metrikaId)}
@@ -71,6 +72,7 @@ ${S.metrika(d.site.seo && d.site.seo.metrikaId)}
     <nav class="nav">
       ${nav.map(([h, t]) => `<a href="${r}${h}"${active === h ? ' aria-current="page"' : ''}>${t}</a>`).join('')}
       <a class="btn btn-sm" href="${r}contact/">Оставить заявку</a>
+      <button class="theme-btn" type="button" aria-label="Сменить тему: тёмная или светлая" title="Тема"><svg class="moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg><svg class="sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
     </nav>
   </div>
 </header>
@@ -131,21 +133,69 @@ function card(i, r) {
   </a>`;
 }
 
-// Окно кабинета партнёра (пример)
-const mock = `<div class="mock" aria-hidden="true">
-  <div class="mock-bar"><i></i><i></i><i></i><span>кабинет партнёра, пример</span></div>
-  <div class="mock-body">
-    <div class="mock-row"><div class="mock-stat"><b>12 480 ₽</b><small>начислено за месяц</small></div><div class="mock-stat"><b>37</b><small>покупателей по ссылке</small></div></div>
-    <div class="mock-tree">
-      <div class="node me">Вы</div>
-      <div class="lvl"><div class="node">10 %</div><div class="node">10 %</div><div class="node">10 %</div></div>
-      <div class="lvl"><div class="node s">4 %</div><div class="node s">4 %</div><div class="node s">4 %</div><div class="node s">4 %</div></div>
-      <div class="lvl"><div class="node xs">2 %</div><div class="node xs">2 %</div><div class="node xs">2 %</div><div class="node xs">2 %</div><div class="node xs">2 %</div></div>
-    </div>
-    <div class="mock-link"><span>shop.ru/?ref=A7K3P2</span><em>копировать</em></div>
+// Конвейер продукта в виде терминала: цифры считаются по настройкам программы, сумма заказа условная
+function terminal(d) {
+  const st = d.settings, r = st.rates.solution, sample = 100000;
+  const part = v => rub(Math.round(sample * v / 100));
+  const pad = (t, n) => String(t).padStart(n, '\u00a0');
+  return `<div class="term-card" role="img" aria-label="Пример: оплаченный заказ проходит расчёт по трём линиям партнёров и попадает в реестр выплат">
+  <div class="term-bar"><i></i><i></i><i></i><span>pipeline, условный пример</span></div>
+  <div class="term-body" aria-hidden="true">
+    <div><span class="k">$</span> order.paid <span class="c">--sum</span> ${rub(sample)}</div>
+    <div class="g">✓ оплата подтверждена</div>
+    <div><span class="k">$</span> partner.accrue</div>
+    <div class="c">&nbsp;&nbsp;l1 ${pad(r.l1, 2)} % → ${part(r.l1)}</div>
+    <div class="c">&nbsp;&nbsp;l2 ${pad(r.l2, 2)} % → ${part(r.l2)}</div>
+    <div class="c">&nbsp;&nbsp;l3 ${pad(r.l3, 2)} % → ${part(r.l3)}</div>
+    <div class="g">✓ удержание ${st.holdDays} дн., затем в реестр выплат</div>
   </div>
-  <div class="float f1">${icon('check', 16)} Заказ оплачен</div><div class="float f2">${icon('wallet', 16)} +1 200 ₽ партнёру</div>
+  <div class="term-sum"><div><small>вход</small><b>Оплаченный заказ</b></div><div><small>обработка</small><b>3 линии партнёров</b></div><div><small>результат</small><b>Выплата от ${rubK(st.minPayout)}</b></div></div>
 </div>`;
+}
+
+// Три направления: редактируются в админке («Название | описание | теги через запятую»)
+const DOMAINS = [
+  { title: 'Магазины и сайты услуг', text: 'Каталог или услуги, заявки и заказы, блог и SEO, админка, в которой цены и фото меняются без программиста.', tags: ['Node.js', 'SSR', 'SEO', 'JSON-LD'] },
+  { title: 'Партнёрка и оплата', text: 'Три линии, ставки с потолком 25 %, закрепление клиента, удержание, реестр выплат. Приём оплаты через ЮKassa, Робокассу и другие сервисы.', tags: ['3 линии', 'ЮKassa', 'Робокасса', 'AES-256-GCM'] },
+  { title: 'Запуск и поддержка', text: 'Демо до покупки, перенос на ваш домен и сервер в России, инструкция и доступы. Данные клиентов хранятся в РФ.', tags: ['VPS', '152-ФЗ', 'Автотесты'] },
+];
+const domainsOf = d => (Array.isArray(d.site.domains) && d.site.domains.length ? d.site.domains : DOMAINS);
+
+// Кейс в формате «проблема, решение, результат»
+function caseBlock(c, full = false) {
+  const problem = c.problem || c.task, solution = c.solution || (c.done || []).slice(0, 3).join('; ');
+  return `<article class="cs">
+  <h2>${esc(c.title)}</h2><p class="muted">${esc(c.client)}</p>
+  <div class="cs-grid"><div><h4>Проблема</h4><p>${esc(problem)}</p></div><div><h4>Решение</h4><p>${esc(solution)}</p></div><div><h4>Результат</h4>${c.metrics && c.metrics.length ? metrics(c) : `<p>${esc(c.status)}</p>`}</div></div>
+  ${(c.stack || []).length ? `<div class="stack">${c.stack.map(x => `<span>${esc(x)}</span>`).join('')}</div>` : ''}
+  ${full ? `<h3>Что сделано</h3><ul class="checks">${(c.done || []).map(x => `<li>${esc(x)}</li>`).join('')}</ul><h3>Статус</h3><p>${esc(c.status)}</p>` : `<p class="muted small">${esc(c.status)}</p>`}
+</article>`;
+}
+
+// Быстрая связь на главной: короткая форма и ссылки из контактов
+function contactBlock(d) {
+  const c = d.site.contacts, ok = u => /^https:\/\//.test(u || '');
+  const q = [
+    c.telegram ? ['https://t.me/' + esc(c.telegram), 'Telegram', '@' + esc(c.telegram)] : null,
+    ok(c.github) ? [esc(c.github), 'GitHub', 'код и примеры'] : null,
+    ok(c.calendar) ? [esc(c.calendar), 'Созвон', 'выбрать время в календаре'] : null,
+    c.whatsappPhone ? ['https://wa.me/' + esc(c.whatsappPhone.replace(/\D/g, '')), 'WhatsApp', 'написать'] : null,
+    c.email ? ['mailto:' + esc(c.email), 'E-mail', esc(c.email)] : null,
+  ].filter(Boolean);
+  return `<section class="sec" id="contact"><div class="wrap">
+  <h2>Расскажите о задаче</h2><p class="muted">Двух предложений достаточно. Отвечу в течение рабочего дня.</p>
+  <div class="contact-box">
+    <form class="form" method="post" action="/contact">
+      <label>Задача в двух словах<textarea name="text" rows="3" placeholder="Например: магазин кормов с партнёрами-заводчиками"></textarea></label>
+      <label>Имя<input name="name" required autocomplete="name"></label>
+      <label>Telegram или e-mail<input name="contact" required autocomplete="email"></label>
+      <label class="check"><input type="checkbox" name="consent" value="1" required> <span>Согласен на обработку персональных данных по <a href="/privacy/" target="_blank">политике</a></span></label>
+      <button class="btn" type="submit">Отправить заявку</button>
+    </form>
+    <div class="quick">${q.map(([h, t, x]) => `<a href="${h}"><span>${t}<small>${x}</small></span></a>`).join('')}<a href="/contact/"><span>Подробная заявка<small>с выбором решения</small></span></a></div>
+  </div>
+</div></section>`;
+}
 
 // Цифры из реальных настроек программы
 function facts(d, extra = []) {
@@ -182,17 +232,26 @@ function home(d) {
 <section class="hero">
   <div class="wrap hero-in">
     <div>
+      ${d.site.statusOn !== false ? `<div class="status"><i></i>${esc(d.site.status || 'Принимаю новые проекты')}</div>` : ''}
       <p class="eyebrow">${esc(d.site.role)}</p>
-      <h1>Готовые сайты и магазины с партнёрской программой под вашу нишу</h1>
+      <h1>Готовые сайты и магазины <span class="grad">с партнёрской программой</span> под вашу нишу</h1>
       <p class="lead">${esc(d.site.tagline)} Подключение оплаты и другие настройки считаются отдельно и известны до старта.</p>
       <div class="actions"><a class="btn" href="/solutions/">Смотреть решения</a><a class="btn btn-ghost" href="/contact/">Обсудить задачу</a></div>
       <ul class="facts"><li><b>Фикс</b>цена решения заранее</li><li><b>1–3</b>линии партнёров</li><li><b>${ready}</b>${ready === 1 ? 'решение готово' : 'решения готовы'}</li></ul>
     </div>
-    ${mock}
+    ${terminal(d)}
   </div>
 </section>
 
 <section class="sec tight"><div class="wrap">${facts(d)}</div></section>
+
+<section class="sec">
+  <div class="wrap">
+    <p class="eyebrow">Что делаю</p>
+    <h2>Три направления</h2>
+    <div class="grid3">${domainsOf(d).map(x => `<div class="dom"><h3>${esc(x.title)}</h3><p>${esc(x.text)}</p>${(x.tags || []).length ? `<div class="stack">${x.tags.map(t => `<span>${esc(t)}</span>`).join('')}</div>` : ''}</div>`).join('')}</div>
+  </div>
+</section>
 
 <section class="sec">
   <div class="wrap">
@@ -219,22 +278,11 @@ function home(d) {
 <section class="sec alt">
   <div class="wrap">
     <h2>Как работаем</h2>
-    <ol class="steps">${d.site.steps.map((s, n) => `<li><span class="step-ico">${icon(s.icon || 'check', 22)}</span><h3>${esc(s.title)}</h3><p>${esc(s.text)}</p></li>`).join('')}</ol>
+    <ol class="steps proc">${d.site.steps.map((s, n) => `<li><span class="pn">${String(n + 1).padStart(2, '0')}</span><h3>${esc(s.title)}</h3><p>${esc(s.text)}</p></li>`).join('')}</ol>
   </div>
 </section>
 
-${k ? `<section class="sec">
-  <div class="wrap split">
-    <div>
-      <p class="eyebrow">Кейс</p>
-      <h2>${esc(k.title)}</h2>
-      <p>${esc(k.task)}</p>
-      ${metrics(k)}
-      <a class="btn btn-ghost" href="/cases/">Подробнее</a>
-    </div>
-    <ul class="checks">${k.done.map(x => `<li>${esc(x)}</li>`).join('')}</ul>
-  </div>
-</section>` : ''}
+${k ? `<section class="sec"><div class="wrap"><p class="eyebrow">Кейс</p>${caseBlock(k)}<a class="btn btn-ghost" href="/cases/">Все кейсы</a></div></section>` : ''}
 
 <section class="sec alt"><div class="wrap split about-strip">
   <img src="/assets/img/evgeny.jpg" alt="${esc(d.site.name)}" width="220" height="293" loading="lazy">
@@ -243,7 +291,7 @@ ${k ? `<section class="sec">
 
 ${d.posts.length ? `<section class="sec"><div class="wrap"><div class="sec-head"><h2>Блог</h2><a href="/blog/">Все статьи →</a></div><div class="grid">${d.posts.slice(0, 3).map(postCard).join('')}</div></div></section>` : ''}
 
-${cta('/')}
+${contactBlock(d)}
 `, jsonld: [S.business(d.site, d.base)] });
 }
 
@@ -349,13 +397,7 @@ function casesPage(d) {
   return layout(d, { title: 'Кейсы', depth: 1, active: 'cases/', body: `
 <section class="page-head"><div class="wrap"><h1>Кейсы</h1></div></section>
 <section class="sec tight"><div class="wrap">
-  ${items.map(c => `<article class="case">
-    <div><h2>${esc(c.title)}</h2><p class="muted">${esc(c.client)}</p>
-    ${metrics(c)}
-    <h3>Задача</h3><p>${esc(c.task)}</p>
-    <h3>Статус</h3><p>${esc(c.status)}</p></div>
-    <div><h3>Что сделано</h3><ul class="checks">${c.done.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>
-  </article>`).join('')}
+  ${items.map(c => caseBlock(c, true)).join('')}
 </div></section>
 ${cta(r)}` });
 }
@@ -492,4 +534,4 @@ function notFound(d) {
   return layout(d, { title: 'Страница не найдена', depth: 0, body: `<section class="page-head"><div class="wrap narrow"><h1>Страница не найдена</h1><p class="lead">Возможно, ссылка устарела.</p><a class="btn" href="/">На главную</a></div></section>` });
 }
 
-module.exports = { files, load, preview, facts, flow, commissionViz, demoLink, metrics, missing, layout, esc, rub, price, cta, home, solutionsPage, solutionPage, servicesPage, casesPage, blogPage, postPage, postCard, aboutPage, contactPage, thanksPage, privacyPage, notFound };
+module.exports = { DOMAINS, files, load, preview, facts, flow, commissionViz, demoLink, metrics, missing, layout, esc, rub, price, cta, home, solutionsPage, solutionPage, servicesPage, casesPage, blogPage, postPage, postCard, aboutPage, contactPage, thanksPage, privacyPage, notFound };

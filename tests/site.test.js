@@ -211,3 +211,20 @@ test('убранные с витрины позиции удаляются и и
     assert.equal(store.c.posts.length, 5);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('главная: статус, направления, кейс; быстрые ссылки только с https', async () => {
+  const { server, store } = createApp({ dataFile: null, config: { port: 0, adminPassword: 'x', secret: 's' } });
+  await new Promise(r => server.listen(0, r));
+  const c = client(server.address().port);
+  try {
+    let t = (await c('GET', '/')).text;
+    assert.match(t, /class="status"/); assert.match(t, /Проблема/); assert.match(t, /Три направления/);
+    assert.doesNotMatch(t, /github\.com/);
+    const base = { name: 'Евгений', role: 'р', tagline: 'т', statusOn: '', status: 'Беру проекты с декабря', domains: 'Один | Описание | a, b' };
+    assert.ok(store.saveSite({ ...base, github: 'javascript:alert(1)' }).length);
+    assert.deepEqual(store.saveSite({ ...base, github: 'https://github.com/x', calendar: 'https://cal.example/y' }), []);
+    t = (await c('GET', '/')).text;
+    assert.doesNotMatch(t, /class="status"/);
+    assert.match(t, /href="https:\/\/github\.com\/x"/); assert.match(t, /Один/);
+  } finally { server.close(); }
+});
