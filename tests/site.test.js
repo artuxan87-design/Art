@@ -92,3 +92,73 @@ test('все иконки и обложки из контента существ
   for (const s of f.site.steps) assert.ok(V.ICONS[s.icon]);
   for (const s of f.solutions.base.partnerFlow) assert.ok(V.ICONS[s.icon]);
 });
+
+test('блог и SEO: страницы статей, карта сайта, закрытие без домена, микроразметка', async () => {
+  const { server, store } = createApp({ dataFile: null, config: { port: 0, adminPassword: 'x', secret: 's' } });
+  await new Promise(r => server.listen(0, r));
+  const c = client(server.address().port);
+  try {
+    assert.match((await c('GET', '/')).text, /noindex/);
+    for (const u of ['/blog/', '/blog/magazin-kosmetiki-s-partnerskoj-programmoj/', '/blog/kak-rabotaet-partnerskaya-programma-na-tri-linii/']) {
+      const r = await c('GET', u);
+      assert.equal(r.status, 200, u);
+      assert.match(r.text, /<h1/); assert.match(r.text, /rel="canonical"/);
+    }
+    assert.equal((await c('GET', '/blog/net-takoj/')).status, 404);
+    // статья показана на странице своего решения
+    assert.match((await c('GET', '/solutions/shop-cosmetics/')).text, /Статьи об этом решении/);
+    store.c.site.domain = 'ivan.ru'; store.c.site.seo.metrikaId = '777';
+    const home = (await c('GET', '/')).text;
+    assert.doesNotMatch(home, /content="noindex/);
+    assert.match(home, /rel="canonical" href="https:\/\/ivan\.ru\/"/);
+    assert.match(home, /"@type":"LocalBusiness"/);
+    assert.match(home, /ym\(777/);
+    const sm = (await c('GET', '/sitemap.xml')).text;
+    assert.match(sm, /https:\/\/ivan\.ru\/blog\/magazin-chaya-i-kofe-s-podpiskoj\//);
+    assert.doesNotMatch(sm, /admin|partner\/|pay\//);
+    assert.match((await c('GET', '/blog/magazin-kosmetiki-s-partnerskoj-programmoj/')).text, /"@type":"Article"/);
+    assert.match((await c('GET', '/partner/login')).text, /noindex/);
+  } finally { server.close(); }
+});
+
+test('разметка статей экранирует опасное и встраивает видео только с разрешённых сайтов', () => {
+  const R = require('../lib/richtext');
+  const h = R.render('## Заголовок\n\n<script>alert(1)</script> **жирный**\n\n![подпись](javascript:alert(1))\n![ок](https://a.ru/x.jpg)\n@видео https://youtu.be/dQw4w9WgXcQ\n@видео https://evil.example/video\n[ссылка](javascript:alert(1))');
+  assert.doesNotMatch(h, /<script/);
+  assert.doesNotMatch(h, /(href|src)="javascript/);
+  assert.match(h, /youtube-nocookie\.com\/embed\/dQw4w9WgXcQ/);
+  assert.doesNotMatch(h, /<iframe[^>]*evil/);
+});
+
+test('админка: статьи, черновики, загрузка фото с проверкой типа файла', async () => {
+  const os = require('os'), fs = require('fs'), path = require('path');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blog-'));
+  const { server, store } = createApp({ dataFile: path.join(dir, 'db.json'), config: { port: 0, adminPassword: 'adm', secret: 's' } });
+  await new Promise(r => server.listen(0, r));
+  const port = server.address().port;
+  const admin = client(port), visitor = client(port);
+  try {
+    await admin('POST', '/admin/login', { password: 'adm' });
+    let r = await admin('POST', '/admin/posts/new', { title: 'Новая статья', body: '## Раздел\n\nТекст.', published: '1', product: 'shop-tea' });
+    assert.equal(r.status, 303);
+    const slug = store.c.posts.at(-1).slug;
+    assert.equal(slug, 'novaya-statya');
+    assert.equal(store.post(slug).product, 'shop-tea');
+    assert.match((await visitor('GET', `/blog/${slug}/`)).text, /Текст\./);
+    await admin('POST', `/admin/posts/${slug}`, { title: 'Новая статья', body: 'x', date: '2026-01-01' });
+    assert.equal((await visitor('GET', `/blog/${slug}/`)).status, 404);
+    assert.equal((await admin('GET', `/blog/${slug}/`)).status, 200);
+    const login = await new Promise(resolve => { const q = http.request({ port, path: '/admin/login', method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }, res => resolve(res.headers['set-cookie'].map(x => x.split(';')[0]).join('; '))); q.end('password=adm'); });
+    const upload = (buf, cookie) => new Promise((resolve, reject) => {
+      const q = http.request({ port, path: '/admin/upload', method: 'POST', headers: { cookie, 'Content-Type': 'application/octet-stream', 'Content-Length': buf.length } }, res => { let t = ''; res.on('data', x => t += x); res.on('end', () => resolve({ status: res.statusCode, json: JSON.parse(t) })); });
+      q.on('error', reject); q.end(buf);
+    });
+    const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(40)]);
+    const ok = await upload(png, login);
+    assert.equal(ok.status, 200);
+    assert.equal((await visitor('GET', ok.json.url)).status, 200);
+    assert.equal((await upload(Buffer.from('<script>alert(1)</script>'.repeat(5)), login)).status, 400);
+    assert.equal((await upload(png, '')).status, 403);
+    assert.equal((await visitor('GET', '/uploads/../server.js')).status, 404);
+  } finally { server.close(); fs.rmSync(dir, { recursive: true, force: true }); }
+});

@@ -4,6 +4,9 @@
 const fs = require('fs');
 const path = require('path');
 
+const S = require('../lib/seo');
+const R = require('../lib/richtext');
+
 const ROOT = path.join(__dirname, '..');
 const OUT = path.join(ROOT, 'dist');
 const read = f => JSON.parse(fs.readFileSync(path.join(ROOT, 'content', f), 'utf8'));
@@ -13,11 +16,11 @@ const rub = n => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' ₽';
 const price = (p, from) => p == null ? '<span class="tbd">Цена уточняется</span>' : (from ? 'от ' : '') + rub(Math.round(p / 100));
 const term = t => t == null ? 'срок уточняется' : esc(t);
 
-function files() { return { site: read('site.json'), solutions: read('solutions.json'), services: read('services.json'), cases: read('cases.json') }; }
+function files() { return { site: read('site.json'), solutions: read('solutions.json'), services: read('services.json'), cases: read('cases.json'), blog: read('blog.json') }; }
 
 function load(store) {
   const base = read('solutions.json');
-  return { settings: store.s, site: { ...store.c.site, steps: files().site.steps }, sol: { categories: base.categories, base: base.base, items: store.c.solutions }, srv: { items: store.c.services }, cases: { items: store.c.cases } };
+  return { settings: store.s, site: { ...store.c.site, steps: files().site.steps }, sol: { categories: base.categories, base: base.base, items: store.c.solutions }, srv: { items: store.c.services }, cases: { items: store.c.cases }, posts: store.publishedPosts(), allPosts: store.c.posts || [] };
 }
 
 // Что владельцу осталось заполнить: список {text, href}
@@ -28,6 +31,9 @@ function missing(d, store, paySettings) {
   if (!s.domain) add('Указать домен сайта (до этого сайт закрыт от поисковиков)', '/admin/site');
   if (!c.telegram && !c.whatsappPhone && !c.email) add('Указать контакты для связи: Telegram, WhatsApp или e-mail', '/admin/site');
   if (!s.operator.name || !s.operator.inn) add('Заполнить реквизиты оператора персональных данных (ФИО или название, ИНН)', '/admin/site');
+  if (!d.allPosts.some(p => p.published)) add('Написать первую статью в блог: про каждое решение, для кого оно и чем полезно', '/admin/posts');
+  if (!(s.seo && s.seo.metrikaId)) add('Подключить Яндекс Метрику: указать номер счётчика', '/admin/site');
+  if (!(s.seo && s.seo.yandexVerification)) add('Подтвердить сайт в Яндекс Вебмастере: вставить код проверки', '/admin/site');
   const noPrice = d.sol.items.filter(i => i.price == null).length;
   if (noPrice) add(`Указать цены решений (без цены: ${noPrice})`, '/admin/solutions');
   const noSrv = d.srv.items.filter(i => i.price == null).length;
@@ -40,23 +46,22 @@ function missing(d, store, paySettings) {
   return out;
 }
 
-function layout(d, { title, desc, depth, active, body, noindex }) {
+function layout(d, { title, rawTitle, desc, depth, active, body, noindex, image, type, jsonld, published, modified }) {
   const r = '/';
-  const nav = [['solutions/', 'Решения'], ['services/', 'Доп. услуги'], ['partners/', 'Партнёрам'], ['cases/', 'Кейсы'], ['about/', 'Обо мне']];
+  const nav = [['solutions/', 'Решения'], ['services/', 'Доп. услуги'], ['blog/', 'Блог'], ['partners/', 'Партнёрам'], ['cases/', 'Кейсы'], ['about/', 'Обо мне']];
   const c = d.site.contacts;
   return `<!doctype html>
 <html lang="ru">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(title ? title + ' — ' + d.site.name : d.site.name + ': ' + d.site.role)}</title>
-<meta name="description" content="${esc(desc || d.site.tagline)}">
-${noindex ? '<meta name="robots" content="noindex, nofollow">' : ''}
+${S.head({ site: d.site, base: d.base || '', path: d.path || '/', title: rawTitle || (title ? title + ' — ' + d.site.name : ((d.site.seo && d.site.seo.title) || d.site.name + ': ' + d.site.role)), desc: desc || (d.site.seo && d.site.seo.description), image, type, noindex: noindex || !d.open || /^\/(admin|partner|pay|demo)(\/|$)/.test(d.path || '/'), jsonld: jsonld || [], published, modified })}
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="${r}assets/style.css">
 <link rel="icon" href="${r}assets/favicon.svg" type="image/svg+xml">
+${S.metrika(d.site.seo && d.site.seo.metrikaId)}
 </head>
 <body>
 <header class="top">
@@ -236,8 +241,10 @@ ${k ? `<section class="sec">
   <div><p class="eyebrow">Кто делает</p><h2>${esc(d.site.name)}</h2><p>Делаю решения, которые бизнес запускает за дни и за понятные деньги. Один человек отвечает за всё: от выбора решения до запуска и поддержки.</p><a class="btn btn-ghost" href="/about/">Обо мне</a></div>
 </div></section>
 
+${d.posts.length ? `<section class="sec"><div class="wrap"><div class="sec-head"><h2>Блог</h2><a href="/blog/">Все статьи →</a></div><div class="grid">${d.posts.slice(0, 3).map(postCard).join('')}</div></div></section>` : ''}
+
 ${cta('/')}
-` });
+`, jsonld: [S.business(d.site, d.base)] });
 }
 
 function metrics(k) {
@@ -274,7 +281,7 @@ function solutionPage(d, i) {
   const demo = link
     ? `<a class="btn btn-ghost" href="${link}" ${i.demoUrl ? 'target="_blank" rel="noopener"' : ''}>${icon('globe', 18)} Открыть демо</a>`
     : `<a class="btn btn-ghost" href="${r}contact/?s=${encodeURIComponent(i.title)}&demo=1">Запросить демо</a>`;
-  return layout(d, { title: i.title, depth: 2, active: 'solutions/', desc: i.summary, body: `
+  return layout(d, { title: i.title, depth: 2, active: 'solutions/', desc: i.summary, jsonld: [S.breadcrumbs(d.base, [['Главная', '/'], ['Решения', '/solutions/'], [i.title, '/solutions/' + i.slug + '/']]), { '@context': 'https://schema.org', '@type': 'Service', name: i.title, description: i.summary, provider: { '@id': d.base + '/#business' }, ...(i.price != null ? { offers: { '@type': 'Offer', price: String(Math.round(i.price / 100)), priceCurrency: 'RUB' } } : {}) }], body: `
 <section class="page-head"><div class="wrap sol-head">
   <div>
     <p class="crumbs"><a href="${r}solutions/">Решения</a> / ${esc(i.niche)}</p>
@@ -311,6 +318,7 @@ function solutionPage(d, i) {
   <div class="grid">${extra.map(s => `<div class="box svc">${ibadge(s.icon || 'sliders', s.accent || 'indigo', 24)}<h3>${esc(s.title)}</h3><p>${esc(s.text)}</p><div class="price">${price(s.price, s.from)}</div></div>`).join('')}</div>
 </div></section>
 
+${d.posts.filter(x => x.product === i.slug).length ? `<section class="sec alt"><div class="wrap"><h2>Статьи об этом решении</h2><div class="grid">${d.posts.filter(x => x.product === i.slug).map(postCard).join('')}</div></div></section>` : ''}
 <section class="sec alt"><div class="wrap narrow">
   <h2>Вопросы и ответы</h2>
   ${b.faq.map(([q, a]) => `<details class="faq"><summary>${esc(q)}</summary><p>${esc(a)}</p></details>`).join('')}
@@ -427,8 +435,61 @@ function privacyPage(d) {
 </div></section>` });
 }
 
+
+// ---------- Блог ----------
+const dateRu = iso => iso ? new Date(iso + 'T12:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
+const crumbs = items => `<p class="crumbs">${items.map(([t, h]) => h ? `<a href="${h}">${esc(t)}</a>` : esc(t)).join(' / ')}</p>`;
+
+function postCard(p) {
+  return `<a class="card post-card" href="/blog/${esc(p.slug)}/">
+    ${p.cover ? `<div class="card-img"><img class="photo" src="${esc(p.cover)}" alt="${esc(p.title)}" loading="lazy" decoding="async"></div>` : ''}
+    <div class="card-top"><span class="muted small">${esc(dateRu(p.date))}</span></div>
+    <h3>${esc(p.title)}</h3><p>${esc(p.excerpt || R.plain(p.body, 140))}</p>
+  </a>`;
+}
+
+function blogPage(d, { tag = '' } = {}) {
+  const posts = d.posts;
+  return layout(d, { title: 'Блог', active: 'blog/', desc: 'Статьи о готовых решениях для бизнеса: что это, зачем нужно, для кого подходит и чем полезно.', body: `
+<section class="page-head"><div class="wrap">
+  ${crumbs([['Главная', '/'], ['Блог']])}
+  <h1>Блог</h1>
+  <p class="lead">О каждом решении: что это, зачем нужно, для кого и чем полезно.</p>
+</div></section>
+<section class="sec tight"><div class="wrap">
+  ${posts.length ? `<div class="grid">${posts.map(postCard).join('')}</div>` : '<p class="lead">Статьи скоро появятся.</p>'}
+</div></section>
+${cta('/')}`, jsonld: [S.breadcrumbs(d.base, [['Главная', '/'], ['Блог', '/blog/']])] });
+}
+
+function postPage(d, p) {
+  const site = d.site, url = `/blog/${p.slug}/`;
+  const sol = p.product ? d.sol.items.find(x => x.slug === p.product) : null;
+  const more = d.posts.filter(x => x.slug !== p.slug).slice(0, 3);
+  const desc = p.seoDesc || p.excerpt || R.plain(p.body, 160);
+  return layout(d, {
+    rawTitle: (p.seoTitle || p.title) + ' — ' + site.name, desc, image: p.cover, type: 'article', published: p.date, modified: p.updated || p.date, active: 'blog/',
+    body: `
+<article class="page-head post"><div class="wrap narrow">
+  ${crumbs([['Главная', '/'], ['Блог', '/blog/'], [p.title]])}
+  <h1>${esc(p.title)}</h1>
+  <p class="muted small"><time datetime="${esc(p.date)}">${esc(dateRu(p.date))}</time> · ${R.readMinutes(p.body)} мин чтения · ${esc(site.name)}</p>
+  ${p.cover ? `<img class="photo wide" src="${esc(p.cover)}" alt="${esc(p.title)}" fetchpriority="high">` : ''}
+  <div class="post-body">${R.render(p.body)}</div>
+  ${(p.tags || []).length ? `<p class="tags">${p.tags.map(t => `<span class="tag">${esc(t)}</span>`).join('')}</p>` : ''}
+</div></article>
+${sol ? `<section class="sec"><div class="wrap narrow"><div class="cta"><div><h2>${esc(sol.title)}</h2><p>${esc(sol.summary)}</p></div><a class="btn btn-light" href="/solutions/${esc(sol.slug)}/">Смотреть решение</a></div></div></section>` : `<section class="sec"><div class="wrap narrow"><div class="cta"><div><h2>Нужен магазин под вашу нишу?</h2><p>Расскажите, что продаёте, и я подскажу подходящее решение.</p></div><a class="btn btn-light" href="/contact/">Оставить заявку</a></div></div></section>`}
+${more.length ? `<section class="sec alt"><div class="wrap"><h2>Читайте также</h2><div class="grid">${more.map(postCard).join('')}</div></div></section>` : ''}`,
+    jsonld: [S.breadcrumbs(d.base, [['Главная', '/'], ['Блог', '/blog/'], [p.title, url]]), {
+      '@context': 'https://schema.org', '@type': 'Article', headline: p.title, description: desc, datePublished: p.date, dateModified: p.updated || p.date,
+      ...(p.cover ? { image: S.abs(d.base, p.cover) } : {}),
+      author: { '@type': 'Person', name: site.name }, publisher: { '@id': d.base + '/#business' }, mainEntityOfPage: d.base + url,
+    }],
+  });
+}
+
 function notFound(d) {
   return layout(d, { title: 'Страница не найдена', depth: 0, body: `<section class="page-head"><div class="wrap narrow"><h1>Страница не найдена</h1><p class="lead">Возможно, ссылка устарела.</p><a class="btn" href="/">На главную</a></div></section>` });
 }
 
-module.exports = { files, load, preview, facts, flow, commissionViz, demoLink, metrics, missing, layout, esc, rub, price, cta, home, solutionsPage, solutionPage, servicesPage, casesPage, aboutPage, contactPage, thanksPage, privacyPage, notFound };
+module.exports = { files, load, preview, facts, flow, commissionViz, demoLink, metrics, missing, layout, esc, rub, price, cta, home, solutionsPage, solutionPage, servicesPage, casesPage, blogPage, postPage, postCard, aboutPage, contactPage, thanksPage, privacyPage, notFound };

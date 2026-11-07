@@ -9,8 +9,10 @@ const { URL } = require('url');
 const { DB } = require('./lib/db');
 const { Store } = require('./lib/store');
 const P = require('./src/pages');
-const A = require('./src/pages-app');
+const A = Object.assign({}, require('./src/pages-app'), require('./src/pages-admin-blog'));
 const Demo = require('./src/pages-demo');
+const Media = require('./lib/media');
+const SEO = require('./lib/seo');
 const { Payments } = require('./lib/payment-service');
 
 const ROOT = __dirname;
@@ -43,7 +45,7 @@ function parseCookies(req) {
 function readBody(req) {
   return new Promise((resolve, reject) => {
     let size = 0; const chunks = [];
-    req.on('data', c => { size += c.length; if (size > 2e5) { reject(new Error('too big')); req.destroy(); } else chunks.push(c); });
+    req.on('data', c => { size += c.length; if (size > 1.5e6) { reject(new Error('too big')); req.destroy(); } else chunks.push(c); });
     req.on('end', () => {
       const raw = Buffer.concat(chunks).toString('utf8');
       let data = {};
@@ -71,6 +73,8 @@ function createApp({ dataFile = process.env.DATA_FILE || path.join(ROOT, 'data',
   const store = new Store(db, clock);
   store.seedContent(P.files());
   store.backfillContent(P.files());
+  store.ensureBlog(P.files());
+  const uploadsDir = path.join(path.dirname(dataFile || path.join(ROOT, 'data', 'db.json')), 'uploads');
   const pay = new Payments({ store, secret: config.secret, http: httpClient, env });
   const sign = v => v + '.' + crypto.createHmac('sha256', config.secret).update(v).digest('hex').slice(0, 32);
   const unsign = s => { if (!s) return null; const i = s.lastIndexOf('.'); const v = s.slice(0, i); return sign(v) === s ? v : null; };
@@ -100,13 +104,22 @@ function createApp({ dataFile = process.env.DATA_FILE || path.join(ROOT, 'data',
     }
 
     const d = P.load(store);
+    let m0;
     const open = !!d.site.domain; // пока домен не указан, сайт закрыт от индексации
     if (p === '/healthz') return send(200, 'ok', 'text/plain');
     if (String(req.headers['x-forwarded-proto'] || '').startsWith('https')) baseHeaders['Strict-Transport-Security'] = 'max-age=15552000';
-    if (p === '/robots.txt') return send(200, open ? `User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /partner\nSitemap: https://${d.site.domain}/sitemap.xml\n` : 'User-agent: *\nDisallow: /\n', 'text/plain; charset=utf-8');
+    d.open = open; d.path = p;
+    d.base = SEO.baseUrl(d.site, `${String(req.headers['x-forwarded-proto'] || 'http').split(',')[0]}://${req.headers.host}`);
+    if (p === '/robots.txt') return send(200, open ? `User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /partner\nDisallow: /pay/\nDisallow: /demo/\nSitemap: ${d.base}/sitemap.xml\n` : 'User-agent: *\nDisallow: /\n', 'text/plain; charset=utf-8');
     if (p === '/sitemap.xml' && open) {
-      const urls = ['', 'solutions/', 'services/', 'partners/', 'cases/', 'about/', 'contact/', ...d.sol.items.map(i => `solutions/${i.slug}/`)];
-      return send(200, `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map(u => `  <url><loc>https://${d.site.domain}/${u}</loc></url>`).join('\n')}\n</urlset>\n`, 'application/xml; charset=utf-8');
+      const last = d.allPosts.map(x => x.updated || x.date).sort().pop();
+      const entries = [['/', last], ['/solutions/'], ['/services/'], ['/blog/', last], ['/partners/'], ['/cases/'], ['/about/'], ['/contact/'], ['/privacy/']]
+        .concat(d.sol.items.map(i => ['/solutions/' + i.slug + '/']), d.posts.map(x => ['/blog/' + x.slug + '/', x.updated || x.date]));
+      return send(200, SEO.sitemap(d.base, entries), 'application/xml; charset=utf-8');
+    }
+    if ((m0 = p.match(/^\/uploads\/([\w.]+)$/))) {
+      const f = Media.read(uploadsDir, m0[1]);
+      return f ? send(200, f.body, f.type, { 'Cache-Control': 'public, max-age=2592000, immutable' }) : send(404, 'Not found', 'text/plain');
     }
     if (!open) baseHeaders['X-Robots-Tag'] = 'noindex, nofollow';
 
@@ -120,6 +133,15 @@ function createApp({ dataFile = process.env.DATA_FILE || path.join(ROOT, 'data',
     const origin = `${String(req.headers['x-forwarded-proto'] || 'http').split(',')[0]}://${req.headers.host}`;
     let m;
     const ctx = { store, settings: store.s, partner: partner && !partner.blocked ? partner : null, refCookie, origin, pay, secret: config.secret, get missing() { return P.missing(d, store, { available: pay.available(), testMode: pay.settings.testMode, baseUrl: pay.settings.baseUrl }); } };
+    // Загрузка фото из админки: тело запроса — сам файл, до 6 МБ
+    if (req.method === 'POST' && p === '/admin/upload') {
+      if (!isAdmin) return send(403, JSON.stringify({ error: 'Войдите в админку' }), 'application/json');
+      const chunks = []; let size = 0, tooBig = false;
+      await new Promise(resolve => { req.on('data', c => { size += c.length; if (size > Media.MAX + 1024) { tooBig = true; } else chunks.push(c); }); req.on('end', resolve); req.on('error', resolve); });
+      if (tooBig) return send(413, JSON.stringify({ error: 'Файл больше 6 МБ. Уменьшите фото' }), 'application/json');
+      const r = Media.save(uploadsDir, Buffer.concat(chunks));
+      return send(r.error ? 400 : 200, JSON.stringify(r), 'application/json');
+    }
     const parsed = req.method === 'POST' ? await readBody(req) : { raw: '', data: {} };
     const body = parsed.data;
 
@@ -137,6 +159,8 @@ function createApp({ dataFile = process.env.DATA_FILE || path.join(ROOT, 'data',
       if (p === '/solutions/') return page(P.solutionsPage(d));
       if ((m = p.match(/^\/solutions\/([\w-]+)\/$/))) { const i = d.sol.items.find(x => x.slug === m[1]); return i ? page(P.solutionPage(d, i)) : notFound(); }
       if ((m = p.match(/^\/demo\/([\w-]+)\/(cabinet\/|admin\/)?$/))) { const i = d.sol.items.find(x => x.slug === m[1]); if (!i || !i.demo || !i.demo.products || !i.demo.products.length) return notFound(); return page(m[2] === 'cabinet/' ? Demo.cabinet(d, i) : m[2] === 'admin/' ? Demo.admin(d, i) : Demo.shop(d, i)); }
+      if (p === '/blog/') return page(P.blogPage(d));
+      if ((m = p.match(/^\/blog\/([\w-]+)\/$/))) { const i = d.posts.find(x => x.slug === m[1]) || (isAdmin ? d.allPosts.find(x => x.slug === m[1]) : null); return i ? page(P.postPage(d, i)) : notFound(); }
       if (p === '/services/') return page(P.servicesPage(d));
       if (p === '/cases/') return page(P.casesPage(d));
       if (p === '/about/') return page(P.aboutPage(d));
@@ -236,6 +260,8 @@ function createApp({ dataFile = process.env.DATA_FILE || path.join(ROOT, 'data',
         if (p === '/admin/solutions') return page(A.adminSolutions(d, ctx, q.msg));
         if (p === '/admin/services') return page(A.adminServices(d, ctx, q.msg));
         if (p === '/admin/cases') return page(A.adminCases(d, ctx, q.msg));
+        if (p === '/admin/posts') return page(A.adminPosts(d, ctx, q.msg));
+        if (p === '/admin/media') return page(A.adminMedia(d, ctx, q.msg, Media.list(uploadsDir)));
         if (p === '/admin/payments') return page(A.adminPayments(d, ctx, q.msg));
         return notFound();
       }
@@ -266,8 +292,10 @@ function createApp({ dataFile = process.env.DATA_FILE || path.join(ROOT, 'data',
       }
       if ((m = p.match(/^\/admin\/partners\/(\d+)\/block$/))) { const pr = store.partner(m[1]); if (pr) { pr.blocked = !pr.blocked; store.log('admin', pr.blocked ? 'партнёр заблокирован' : 'партнёр разблокирован', pr.name); store.save(); } return redirect('/admin/partners'); }
       if ((m = p.match(/^\/admin\/payouts\/(\d+)\/(paid|reject)$/))) { const e = store.resolvePayout(m[1], m[2] === 'paid'); return redirect('/admin/payouts?msg=' + encodeURIComponent(e || 'Готово')); }
-      const back = (page, errs, msg) => errs && errs.length ? send(400, A[{ site: 'adminSite', solutions: 'adminSolutions', services: 'adminServices', cases: 'adminCases', payments: 'adminPayments' }[page]](d, ctx, '', errs)) : redirect(`/admin/${page}?msg=` + encodeURIComponent(msg || 'Сохранено'));
+      const back = (page, errs, msg) => errs && errs.length ? send(400, A[{ site: 'adminSite', solutions: 'adminSolutions', services: 'adminServices', cases: 'adminCases', posts: 'adminPosts', payments: 'adminPayments' }[page]](d, ctx, '', errs)) : redirect(`/admin/${page}?msg=` + encodeURIComponent(msg || 'Сохранено'));
       if (p === '/admin/site') return back('site', store.saveSite(body));
+      if ((m = p.match(/^\/admin\/posts\/([\w-]+)(\/delete)?$/))) { if (m[2]) { store.deletePost(m[1]); return back('posts', [], 'Статья удалена'); } return back('posts', store.savePost(m[1] === 'new' ? '' : m[1], body)); }
+      if ((m = p.match(/^\/admin\/media\/([\w.]+)\/delete$/))) { Media.remove(uploadsDir, m[1]); return redirect('/admin/media?msg=' + encodeURIComponent('Файл удалён')); }
       if ((m = p.match(/^\/admin\/solutions\/([\w-]+)(\/delete)?$/))) { if (m[2]) { store.deleteSolution(m[1]); return back('solutions', [], 'Удалено'); } return back('solutions', store.saveSolution(m[1] === 'new' ? '' : m[1], body)); }
       if ((m = p.match(/^\/admin\/services\/([\w-]+)(\/delete)?$/))) { if (m[2]) { store.deleteService(m[1]); return back('services', [], 'Удалено'); } return back('services', store.saveService(m[1] === 'new' ? '' : m[1], body)); }
       if ((m = p.match(/^\/admin\/cases\/([\w-]+)(\/delete)?$/))) { if (m[2]) { store.deleteCase(m[1]); return back('cases', [], 'Удалено'); } return back('cases', store.saveCase(m[1] === 'new' ? '' : m[1], body)); }

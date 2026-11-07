@@ -166,7 +166,7 @@ function accrualsCsv(ctx) {
 
 // ---------- Админка ----------
 function adminShell(d, ctx, tab, inner) {
-  const tabs = [['', 'Сводка'], ['leads', 'Заявки'], ['orders', 'Заказы'], ['partners', 'Партнёры'], ['payouts', 'Выплаты'], ['solutions', 'Решения'], ['services', 'Услуги'], ['cases', 'Кейсы'], ['site', 'Сайт'], ['payments', 'Оплата'], ['settings', 'Партнёрка и пароль'], ['log', 'Журнал']];
+  const tabs = [['', 'Сводка'], ['leads', 'Заявки'], ['orders', 'Заказы'], ['partners', 'Партнёры'], ['payouts', 'Выплаты'], ['solutions', 'Решения'], ['services', 'Услуги'], ['cases', 'Кейсы'], ['posts', 'Блог'], ['media', 'Фото'], ['site', 'Сайт и SEO'], ['payments', 'Оплата'], ['settings', 'Партнёрка и пароль'], ['log', 'Журнал']];
   return layout(d, { title: 'Админка', depth: 1, body: `<section class="page-head"><div class="wrap">
   <div class="sec-head"><h1>Админка</h1>${POST('/admin/logout', '<button class="btn btn-ghost btn-sm">Выйти</button>')}</div>
   <nav class="tabs">${tabs.map(([k, t]) => `<a href="/admin/${k}"${k === tab ? ' aria-current="page"' : ''}>${t}</a>`).join('')}</nav>${inner}</div></section>` });
@@ -361,4 +361,4 @@ function payTest(d, ctx, p) {
 ${POST(`/pay/test/${p.id}/confirm`, '<button class="btn">Подтвердить тестовую оплату</button>')}</div></section>` });
 }
 
-module.exports = { adminSite, adminSolutions, adminServices, adminCases, adminPayments, payPage, payRedirect, payTest, partnersLanding, rulesPage, register, login, cabDashboard, cabTree, cabAccruals, cabPayout, cabMaterials, accrualsCsv, adminLogin, adminDash, adminLeads, adminLead, adminOrders, adminOrder, adminPartners, adminPayouts, payoutsCsv, adminSettings, adminLog, rub };
+module.exports = { adminShell, inp, sel, rubIn, flash, errs, POST, adminSite, adminSolutions, adminServices, adminCases, adminPayments, payPage, payRedirect, payTest, partnersLanding, rulesPage, register, login, cabDashboard, cabTree, cabAccruals, cabPayout, cabMaterials, accrualsCsv, adminLogin, adminDash, adminLeads, adminLead, adminOrders, adminOrder, adminPartners, adminPayouts, payoutsCsv, adminSettings, adminLog, rub };
