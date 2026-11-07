@@ -12,4 +12,4 @@ services:
       - key: SECRET
         generateValue: true
       - key: ADMIN_PASSWORD
-        generateValue: true
+        value: "1234"   # стартовый пароль демо; сменить в Render (Environment) до приёма настоящих данных
